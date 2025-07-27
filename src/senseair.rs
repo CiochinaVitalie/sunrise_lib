@@ -498,6 +498,21 @@ where
         }
     }
 
+    /// Powers on the sensor using the optional enable pin.
+    pub fn power_on(&mut self) {
+        self.en_pin_set();
+    }
+
+    /// Powers off the sensor by resetting the optional enable pin.
+    pub fn power_off(&mut self) {
+        self.en_pin_reset();
+    }
+
+    /// Issues a start measurement command to the sensor.
+    pub fn start_measurement(&mut self) -> Result<(), E> {
+        self.write_register(Registers::StartMesurement, &[0x01], RAM_DELAY)
+    }
+
     /// Retrieves the sensor's configuration values from the sensor's EEPROM registers.
     pub fn get_config(&mut self) -> Result<Config, E> {
         let mut buf = [0u8; 2];
