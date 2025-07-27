@@ -1,0 +1,14 @@
+[package]
+name = "sunrise_lib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+embedded-hal = { version = "0.2.7", features = ["unproven"] }
+heapless = "0.8.0"
+byteorder = { version = "1", default-features = false }
+defmt = { version = "1.0.1", optional = true }
+
+[features]
+default = []
+defmt = ["dep:defmt"]
