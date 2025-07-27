@@ -3,9 +3,9 @@
 use core::option::Option;
 use core::result::Result;
 
+use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::i2c::{Read, Write, WriteRead};
 use embedded_hal::digital::v2::{InputPin, OutputPin};
-use embedded_hal::blocking::delay::DelayMs;
 use heapless::String;
 use heapless::Vec;
 
@@ -75,7 +75,7 @@ pub struct Sunrise<T, I2C, EN, NRDY> {
  * - `measurement`: Object that holds measurement data.
  * - `set_data`: Configuration settings for the device.
  */
-impl<T,I2C, E, EN, NRDY> Sunrise<T, I2C, EN, NRDY>
+impl<T, I2C, E, EN, NRDY> Sunrise<T, I2C, EN, NRDY>
 where
     I2C: Read<Error = E> + Write<Error = E> + WriteRead<Error = E>,
     T: DelayMs<u32>,
@@ -271,21 +271,7 @@ where
      *
      */
     fn check_sensor_error(&mut self, sensor_err: u16) -> Option<ErrorStatus<E>> {
-        match sensor_err {
-            x if x & (1 << 15) != 0 => Some(ErrorStatus::LowInternalRegulatedVoltage),
-            x if x & (1 << 14) != 0 => Some(ErrorStatus::MeasurementTimeout),
-            x if x & (1 << 13) != 0 => Some(ErrorStatus::AbnormalSignalLevel),
-            x if x & (1 << 8) != 0 => Some(ErrorStatus::ScaleFactorError),
-            x if x & (1 << 7) != 0 => Some(ErrorStatus::FatalError),
-            x if x & (1 << 6) != 0 => Some(ErrorStatus::I2cError),
-            x if x & (1 << 5) != 0 => Some(ErrorStatus::AlgoritmError),
-            x if x & (1 << 4) != 0 => Some(ErrorStatus::CalibrationError),
-            x if x & (1 << 3) != 0 => Some(ErrorStatus::SelfDiagnosticsError),
-            x if x & (1 << 2) != 0 => Some(ErrorStatus::OutOfRange),
-            x if x & (1 << 1) != 0 => Some(ErrorStatus::MemoryError),
-            x if x & (1 << 0) != 0 => Some(ErrorStatus::NoMeasurementCompleted),
-            _ => None,
-        }
+        ErrorStatus::from_bits(sensor_err)
     }
 
     /**
@@ -497,10 +483,6 @@ where
         self.set_data.filter_par6 = u16::from_be_bytes([state_buf[0], state_buf[1]]);
         Ok(())
     }
-    /// Compares two values and returns a boolean indicating whether they are equal.
-    fn is_equal<F: PartialEq>(&mut self, a: F, b: F) -> bool {
-        a == b
-    }
     /// Sets the enable pin high to power on the sensor.
     fn en_pin_set(&mut self) {
         if let Some(ref mut en_pin) = self.en_pin {
@@ -549,75 +531,66 @@ where
     }
     /// Sets the sensor's configuration values in the sensor's EEPROM registers.
     fn set_config(&mut self, config: Config) -> Result<(), E> {
-        if let false = self.is_equal(
-            config.single_measurement_mode,
-            self.config.single_measurement_mode,
-        ) {
+        if config.single_measurement_mode != self.config.single_measurement_mode {
             self.write_register(
                 Registers::MeterControlEe,
                 &[config.single_measurement_mode],
                 EEPROM_DELAY,
             )?;
         }
-        if let false = self.is_equal(config.measurement_period, self.config.measurement_period) {
+        if config.measurement_period != self.config.measurement_period {
             self.write_register(
                 Registers::MeasurementPeriodEe,
                 &config.measurement_period.to_be_bytes(),
                 EEPROM_DELAY,
             )?;
         }
-        if let false = self.is_equal(config.abc_period, self.config.abc_period) {
+        if config.abc_period != self.config.abc_period {
             self.write_register(
                 Registers::AbcPeriodEe,
                 &config.abc_period.to_be_bytes(),
                 EEPROM_DELAY,
             )?;
         }
-        if let false = self.is_equal(config.abc_target, self.config.abc_target) {
+        if config.abc_target != self.config.abc_target {
             self.write_register(
                 Registers::AbcTargetEe,
                 &config.abc_target.to_be_bytes(),
                 EEPROM_DELAY,
             )?;
         }
-
-        if let false = self.is_equal(config.denominator, self.config.denominator) {
+        if config.denominator != self.config.denominator {
             self.write_register(
                 Registers::DenominatorEe,
                 &config.denominator.to_be_bytes(),
                 EEPROM_DELAY,
             )?;
         }
-
-        if let false = self.is_equal(config.nominator, self.config.nominator) {
+        if config.nominator != self.config.nominator {
             self.write_register(
                 Registers::NominatorEe,
                 &config.nominator.to_be_bytes(),
                 EEPROM_DELAY,
             )?;
         }
-
-        if let false = self.is_equal(config.number_of_samples, self.config.number_of_samples) {
+        if config.number_of_samples != self.config.number_of_samples {
             self.write_register(
                 Registers::NumberOfSamplesEe,
                 &config.number_of_samples.to_be_bytes(),
                 EEPROM_DELAY,
             )?;
         }
-
-        if let false = self.is_equal(config.scaled_abc_target, self.config.scaled_abc_target) {
+        if config.scaled_abc_target != self.config.scaled_abc_target {
             self.write_register(
                 Registers::ScaleAbcTarget,
                 &config.scaled_abc_target.to_be_bytes(),
                 EEPROM_DELAY,
             )?;
         }
-
-        if let false = self.is_equal(config.i2c_address, self.config.i2c_address) {
+        if config.i2c_address != self.config.i2c_address {
             self.write_register(Registers::I2cAddressEe, &[config.i2c_address], EEPROM_DELAY)?;
         }
-
-        if let false = self.is_equal(config.iir_filter, self.config.iir_filter) {
+        if config.iir_filter != self.config.iir_filter {
             self.write_register(
                 Registers::StaticIIRFilterEe,
                 &[config.iir_filter],

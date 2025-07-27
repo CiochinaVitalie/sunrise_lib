@@ -1,5 +1,3 @@
-
-
 #[derive(Copy, Clone)]
 #[allow(dead_code)]
 pub enum Registers {
@@ -61,4 +59,25 @@ pub enum ErrorStatus<E> {
     OutOfRange,
     MemoryError,
     NoMeasurementCompleted,
+}
+
+impl<E> ErrorStatus<E> {
+    /// Create an [`ErrorStatus`] from the raw sensor error bits.
+    pub fn from_bits(bits: u16) -> Option<Self> {
+        match bits {
+            x if x & (1 << 15) != 0 => Some(ErrorStatus::LowInternalRegulatedVoltage),
+            x if x & (1 << 14) != 0 => Some(ErrorStatus::MeasurementTimeout),
+            x if x & (1 << 13) != 0 => Some(ErrorStatus::AbnormalSignalLevel),
+            x if x & (1 << 8) != 0 => Some(ErrorStatus::ScaleFactorError),
+            x if x & (1 << 7) != 0 => Some(ErrorStatus::FatalError),
+            x if x & (1 << 6) != 0 => Some(ErrorStatus::I2cError),
+            x if x & (1 << 5) != 0 => Some(ErrorStatus::AlgoritmError),
+            x if x & (1 << 4) != 0 => Some(ErrorStatus::CalibrationError),
+            x if x & (1 << 3) != 0 => Some(ErrorStatus::SelfDiagnosticsError),
+            x if x & (1 << 2) != 0 => Some(ErrorStatus::OutOfRange),
+            x if x & (1 << 1) != 0 => Some(ErrorStatus::MemoryError),
+            x if x & (1 << 0) != 0 => Some(ErrorStatus::NoMeasurementCompleted),
+            _ => None,
+        }
+    }
 }
