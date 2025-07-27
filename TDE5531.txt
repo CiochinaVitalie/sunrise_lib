@@ -1,0 +1,4566 @@
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+1 (56)
+
+Table of contents:
+I2C protocol ..................................................................................................................... 4
+
+1.
+1.1.
+
+I2C bus ......................................................................................................................... 4
+
+1.2.
+
+I2C data transfer .......................................................................................................... 5
+
+1.3.
+
+Abbreviations ............................................................................................................. 6
+
+1.4.
+
+References .................................................................................................................. 6
+I2C on Senseair Sunrise and Sunlight .............................................................................. 7
+
+2.
+
+I2C settings .................................................................................................................. 7
+
+2.1.
+2.1.1
+
+Senseair Sunrise and Sunlight I2C settings ............................................................. 7
+
+2.1.2
+
+I2C read only registers........................................................................................... 10
+
+2.1.3
+
+I2C read/write registers ........................................................................................ 17
+
+3.
+
+Examples....................................................................................................................... 27
+3.1.
+
+Read Error Status and gas concentration ................................................................. 27
+
+3.1.1
+
+Example using repeated start: .............................................................................. 27
+
+3.1.2
+
+Example not using repeated start: ....................................................................... 27
+
+3.2.
+
+Set measurement mode to single measurement mode .......................................... 28
+
+3.3.
+
+Start single measurement ........................................................................................ 28
+
+3.4.
+
+Sequence for single measurement mode, sensor enabled/disabled by EN pin ...... 30
+
+3.5.
+
+Enable/Disable ABC .................................................................................................. 36
+
+3.5.1
+
+Enable ABC: .......................................................................................................... 36
+
+3.5.2
+
+Disable ABC: ......................................................................................................... 38
+
+3.6.
+
+Enable/Disable dynamic IIR filter ............................................................................. 39
+
+3.6.1
+
+Enable dynamic IIR filter. ...................................................................................... 39
+
+3.6.2
+
+Disable static and dynamic IIR filter...................................................................... 40
+
+3.7.
+3.7.1
+
+Calibration ................................................................................................................ 41
+Background Calibration ........................................................................................ 41
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+2 (56)
+
+3.8.
+
+I2C address ................................................................................................................ 46
+
+3.9.
+
+Enable/Disable pressure compensation ................................................................... 48
+
+3.9.1
+
+Enable pressure compensation. ........................................................................... 48
+
+3.9.2
+
+Disable pressure compensation. .......................................................................... 49
+
+3.10.
+
+Write pressure to sensor .......................................................................................... 50
+
+3.11.
+
+Write scaling factor................................................................................................... 51
+
+4.
+
+Scaling factors from ppm to %LFL for common gases .................................................. 53
+
+5.
+
+Revision history ............................................................................................................ 54
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+3 (56)
+
+1. I2C protocol
+I2C is a communication protocol invented by Philips Semiconductor for communication
+between a controller (or multiple controllers) and a single or multiple target devices. It is
+commonly used for intra-board low speed communications [1].
+
+1.1. I2C bus
+I2C requires only two bus lines, serial data line (SDA) and serial clock line (SCL), Figure 1 is an
+example of an I2C bus with three targets and one controller. Both SDA and SCL are
+bidirectional lines that should be connected to a positive voltage via a current source or pullup resistors. The output stages of devices connected to the bus must have an open-drain or
+open-collector to perform the wired AND logic, an example is shown in Figure 2.
+
+Figure 1. I2C Bus
+
+Figure 2. Structure of SDA/SCL ports
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+4 (56)
+
+1.2. I2C data transfer
+Every I2C transmission starts with a START condition and ends with a STOP condition,
+however a transmission can contain repeated START conditions. A high to low transition on
+SDA line while SCL is high defines a START condition. A low to high transition on the SDA line
+while SCL is high defines a STOP condition. Figure 3 shows both a START and a STOP
+condition.
+SDA
+
+SDA
+
+SCL
+
+SCL
+
+START condition
+
+STOP condition
+
+Figure 3. START and STOP conditions
+
+One data bit is transferred each clock pulse of SCL. Reading of SDA is done when SCL is high
+and SDA is only allowed to change when SCL is low. Every data byte is followed by one
+ACK/NACK bit. It is always the receiving device that does the ACK/NACK, for example when
+controller a has written 8 bits to a target the controller releases SDA and the target should
+drive SDA low before SCL goes high to ACK the transmission.
+Figure 4 and
+Figure 5 show examples of transmissions with ACK and NACK bits.
+SDA
+
+1
+
+1
+
+0
+
+1
+
+0
+
+0
+
+0
+
+0
+
+ACK
+
+LSB
+
+ACK
+
+0
+
+NACK
+
+LSB
+
+ACK
+
+SCL
+MSB
+
+Figure 4. 0xD0 (11010000b) and ACK
+
+SDA
+
+1
+
+1
+
+0
+
+1
+
+0
+
+0
+
+0
+
+SCL
+MSB
+
+STOP
+
+Figure 5. 0xD0 (11010000b), NACK and STOP
+The first byte sent after a START condition is always an address byte, the address itself is 7
+bits (10 bits address mode exist but is not covered in this document) and the least significant
+bit is used as direction bit (R/W). If the least significant bit is 0 it means the controller wants
+to write to the target, if least significant bit is 1 it means that the controller r wants to read
+from the target. When least significant bit is 1 the target is intended to take control of SDA
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+5 (56)
+
+from next byte, but the controller still controls SCL. When the controller wants to stop
+reading from the target it will NACK last byte sent by the target and send a STOP condition.
+If a receiving device, controller or target, needs additional time to for example evaluate a
+received byte it can pause the data transfer by holding SCL low, this is called clock stretching.
+An example of clock stretching is shown in
+Figure 6.
+SDA
+
+1
+
+ACK
+
+0
+
+LSB
+
+ACK
+
+MSB
+
+1
+
+SCL
+
+SCL held low by slave while
+interrupts are serviced
+
+Figure 6, Clock stretching
+
+1.3. Abbreviations
+Term
+
+Description
+
+LLSB
+
+least least significant byte
+
+LMSB
+
+least most significant byte
+
+LSB
+
+least significant byte
+
+MLSB
+
+most least significant byte
+
+MMSB
+
+most most significant byte
+
+MSB
+
+most significant byte
+
+1.4. References
+[1] UM10204 I2C-Bus specification and Manual, NXP semiconductors
+[2] TDE7318, Sunrise user guideline
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+6 (56)
+
+2. I2C on Senseair Sunrise and Sunlight
+
+2.1. I2C settings
+The sensor acts as a target device on the I2C bus.
+2.1.1 Senseair Sunrise and Sunlight I2C settings
+Parameter
+
+Value
+
+Description
+
+Controller/target
+mode
+
+Target
+
+Sensor will never initiate communication
+
+Data rate
+
+Up to 100kbit/s
+(standard mode)
+
+Addressing mode
+
+7 bit
+
+Address range
+
+0 – 127
+
+Default address is 0x68
+
+Clock stretch
+
+Yes
+
+If sensor needs time to evaluate a received
+byte it will hold SCL low.
+Note: For articles 006-0-0002, 006-0-0007
+please refer to “Writing time to EE” and
+“Writing time to RAM” as timeout intervals
+which sensor can hold SCL to evaluate a
+received byte.
+
+SCL pull-up
+
+100kΩ
+
+SDA pull-up
+
+-
+
+Wake-up
+
+Wake up needed
+
+Timeout
+
+15ms
+
+After any activity on the SDA line sensor
+will wake up, sensor will enter sleep again
+after 15ms without activity on the SDA line
+or after a completed read or write cycle.
+
+Writing time to EE
+
+Articles 006-0-0002,
+006-0-0007:
+
+Write operations into (EE) registers require
+relative long to process. If sensor is
+powered down while EEPROM write
+
+<25ms
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+7 (56)
+
+Article 006-0-0008:
+< 107ms
+Writing time to RAM
+
+operations are ongoing it may result in
+corrupt parameters.
+
+<1ms
+
+Table 1. Senseair Sunrise and Sunlight I2C settings
+Since Senseair Sunrise/Sunlight only provides a 100kΩ pull-up resistor on the SCL line an
+external pull-up resistor must be used for SDA. To be able to use data rates up to 100kbit it is
+in most cases suitable to use pull-up resistors in the range 5kΩ - 15kΩ on both SCL and SDA.
+Information about how to calculate appropriate pull-up resistor values can be found in [1]
+Senseair Sunrise/Sunlight spend most of its time in deep sleep mode to minimise power
+consumption, this have the effect that it is necessary to wake up the sensors before it is
+possible to communicate with them. Sensor will wake up on a falling edge on SDA, it is
+recommended to send sensors address to wake it up. When sensors address is used to wake
+up the sensor, the sensor will not acknowledge this byte if it in sleep mode and will
+acknowledge it if sensor is already activated to process a measurement or a previous
+communication attempt.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+8 (56)
+
+Communication sequence:
+1) Wake up sensor by sending sensor address (START, sensor address, STOP).
+Sensor will not ACK this byte. Note: Sensor will ACK the address if it was not in sleep mode
+(for example, during measurements).
+
+Stop
+
+R/W = 1
+Data(n)
+
+Data(n + 1)
+
+Data(n + x)
+
+P
+
+NACK
+
+Slave
+Address
+
+S
+
+ACK
+
+Max 15ms
+
+ACK
+
+P
+
+ACK
+
+NACK
+
+Start
+
+Stop
+Register
+Address
+
+ACK
+
+Slave
+Address
+
+ACK
+
+S
+
+R/W = 0
+
+P
+
+Slave
+Address
+
+SDA S
+
+ACK
+
+Stop
+
+Start
+
+Start
+
+R/W = 0
+
+2) Normal I2C read/write operations. I2C communication must be started within 15ms after
+the wake-up byte, each byte sent to or from the sensor sets the timeout to 15 ms. After a
+complete read or write sequence sensor will enter sleep mode immediately.
+
+Data(n + x)
+
+P
+
+ACK
+
+Data(n + 1)
+ACK
+
+Data(n)
+
+ACK
+
+Slave
+Address
+ACK
+
+S
+
+Stop
+
+R/W = 1
+
+Start
+
+Register
+Address
+ACK
+
+Slave
+Address
+ACK
+
+S
+
+R/W = 0
+
+Start
+
+P
+
+Slave
+Address
+NACK
+
+SDA S
+
+Stop
+
+Start
+
+R/W = 0
+
+Figure 7. Reading from Senseair Sunrise/Sunlight after wake up
+
+Stop
+P
+
+ACK
+
+Data(n + x)
+
+ACK
+
+Data(n + 1)
+
+ACK
+
+Data(n)
+
+ACK
+
+Register
+Address
+
+ACK
+
+Slave
+Address
+
+ACK
+
+S
+
+R/W = 0
+
+Start
+
+P
+
+Slave
+Address
+
+NACK
+
+SDA S
+
+Stop
+
+Start
+
+R/W = 0
+
+Figure 8. Reading from Senseair Sunrise/Sunlight after wake up using repeated start
+
+Figure 9. Writing to Senseair Sunrise/Sunlight
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+9 (56)
+
+I2C register map
+I2C registers are categorised into two groups: I2C read only registers (see table 2) and I2C
+read/wright registers (see table 3.
+
+2.1.2 I2C read only registers
+
+Name
+
+ErrorStatus
+
+Register
+number /
+Address
+
+0x00 (MSB)
+
+Description (read only registers)
+Bit
+
+Error description
+
+Suggested action
+
+0
+
+Low internal
+regulated voltage
+
+Check power supply.
+
+For article 006-0-0007:
+Flag is set if sensor’s
+internal regulated
+voltage is too low, this
+means supply voltage is
+lower than 2.8V. Flag is
+cleared after internal
+voltage normalization.
+
+This means output voltage
+from internal regulator is
+lower than 2.8V or due too
+low input sensor's voltage
+or due internal regulator
+malfunction. Measurement
+data is not valid.
+
+For article 006-0-0008:
+Flag is set if sensor's
+internal regulated
+voltage dropped below
+2.8V and sensor's reset
+occurred. Flag shall be
+cleared by proper
+power-off/on
+sequence, reset
+command or by writing
+into “Clear ErrorStatus”
+register.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+10 (56)
+
+1
+
+Measurement timeout Flag is cleared after a
+successful measurement.
+Flag is set if sensor is
+unable to complete the If flag is set permanently,
+measurement in time.
+try to restart sensor by
+power on/off.
+For article 006-0-0008:
+Contact local distributor.
+This flag is set in
+combination with the
+Self-diagnostic flag.
+
+2For article 006-0-0008:
+Abnormal signal level
+
+Flag is cleared after a
+successful measurement.
+
+If flag is set permanently,
+Flag is set if an invalid
+try to restart sensor by
+measurement sample is
+power on/off.
+detected.
+This flag is set in
+combination with the
+Self-diagnostic flag.
+3
+
+Reserved
+
+4
+
+Reserved
+
+5
+
+Reserved
+
+6
+
+Reserved
+
+7
+
+For firmware revision
+4.10 and above:
+Scale factor error
+
+Contact local distributor.
+
+Flag is cleared after writing
+correct scaling factor value
+and following reset of the
+sensor
+
+Flag is set if current
+scaling factor defined
+by 0xA8...0xAB registers
+is not correct
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+11 (56)
+
+Bit
+
+Error description
+
+Suggested action
+
+0
+
+Fatal error
+
+Try to restart sensor by
+power on/off.
+
+Indicates that
+initialization of analog
+front end failed
+1
+
+I2C error
+Attempt to read or
+write to not exiting
+addresses/registers
+detected.
+
+Contact local distributor.
+Try to restart sensor by
+power on/off.
+Check wires, connectors
+and I2C protocol
+implementation.
+Contact local distributor.
+
+2
+
+Algorithm error
+Corrupt parameters
+detected.
+
+3
+0x01 (LSB)
+
+Calibration error
+Indicates that
+calibration has failed
+(ABC, zero, background
+or target calibration).
+
+4
+
+Self-diagnostics error
+Indicates internal
+failure.
+
+Try to restart sensor by
+power on/off.
+Contact local distributor.
+Try to repeat calibration.
+Ensure that the
+environment is stable
+during calibration.
+
+Try to restart sensor by
+power on/off.
+Contact local distributor.
+
+For articles 006-0-0008:
+Detailed information of
+the failure can be found
+in MSB bits 1-2.
+5
+
+Out of range
+Indicates that the
+measured
+
+©2024 Senseair AB. All rights reserved.
+
+Ensure that the
+environment is within the
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+12 (56)
+
+concentration,
+temperature, or set
+pressure are outside
+the sensor’s
+measurement range
+
+sensors operating range
+(see Product specification)
+If pressure compensation is
+enabled, provide valid
+pressure value for pressure
+compensation.
+Perform suitable gas
+calibration (zero,
+background or target
+calibration).
+Contact local distributor.
+
+6
+
+Memory error
+Error during memory
+operations
+
+7
+
+Try to restart sensor by
+power on/off.
+Contact local distributor.
+
+No measurement
+completed
+
+0 – First measurement cycle
+completed
+
+Bit set at startup,
+cleared after first
+measurement
+
+1 – No measurement
+completed
+
+If sensor is used in single
+measurement mode and
+powered down between
+measurements this bit can
+be used to verify started
+measurement cycle has
+finished
+Reserved
+
+0x02
+
+Reserved
+
+0x03
+
+Reserved
+
+0x04
+
+Reserved
+
+0x05
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+13 (56)
+
+Measured
+concentration
+Filtered &
+pressure
+compensated
+
+0x06 (MSB)
+
+0x07 (LSB)
+
+0x08 (MSB)
+Temperature
+0x09 (LSB)
+Reserved
+
+0x0A
+
+Reserved
+
+0x0B
+
+Reserved
+
+0x0C
+
+Measurement
+count
+
+See [2] for details about IIR filtration and pressure
+compensation
+Chip temperature. Signed 16 bit value, unit °C x100. For
+example, register value = 2223 means 22.23°C.
+
+Counter incremented after each measurement, range 0 –
+255. The counter wraps around after the maximum value is
+reached.
+0x0D
+Counter value can for example be used by the host system to
+ensure that the sensor has done a measurement since last
+time measurement concentration was read.
+0x0E (MSB)
+
+Measurement
+cycle time
+
+Filtered pressure compensated gas concentration. Signed 16
+bit value, unit ppm. Addresses 0x06 2bytes and 0x12 2 bytes
+are equal if the pressure compensation is disabled at 0xA5
+(default)
+
+0x0F (LSB)
+
+Measured
+concentration
+Unfiltered
+pressure
+compensated
+
+0x10 (MSB)
+
+Measured
+concentration
+Filtered
+
+0x12 (MSB)
+
+Measurement cycle time shows current time in present
+measurement cycle, incremented every 2 seconds. For
+example, Measurement cycle time = 3 means 6 seconds has
+passed in current measurement cycle. Value is set to 0 when
+sensor starts a new measurement. This value can be used by
+the host system to synchronize readings with sensor
+measurements.
+Unfiltered pressure compensated gas concentration.
+Signed 16 bit value, unit ppm.
+
+0x11 (LSB)
+
+0x13 (LSB)
+
+Addresses 0x10 2bytes & 0x14 2 bytes are equal if pressure
+compensation is disabled at 0xA5 (default)
+Filtered gas concentration. Signed 16 bit value, unit ppm. See
+[2] for details about IIR filtration.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+14 (56)
+
+Measured
+concentration
+Unfiltered
+
+0x14 (MSB)
+Unfiltered gas concentration. Signed 16 bit value, unit ppm.
+0x15 (LSB)
+
+Reserved
+Scaled
+measured
+concentration
+
+0x1A (MSB)
+
+Filtered
+Pressure
+Compensated
+
+Measured concentration (0x06…0x07) scaled by scale
+factor defined by 0xAA…0xAB registers. Signed 16 bit
+value.
+
+0x1B (LSB)
+
+Note: For firmware revision 4.10 and above
+
+Reserved
+0x2A (MMSB)
+0x2B (MLSB)
+ETC
+0x2C (LMSB)
+
+Elapsed time counter: counts while the sensor is
+powered up. Unsigned 32 bit value, unit hours.
+Note: For firmware revision 4.10 and above
+
+0x2D (LLSB)
+Reserved
+Firmware type
+
+0x2F
+
+Firmware type. Unsigned 8 bit value.
+
+0x38 (MSB)
+
+Firmware main revision
+
+0x39 (LSB)
+
+Firmware sub revision
+
+Reserved
+Firmware rev.
+0x3A (MMSB)
+0x3B (MLSB)
+Sensor Id
+
+Sensor Id. Unsigned 32 bit value.
+0x3C (LMSB)
+0x3D (LLSB)
+
+Reserved
+
+0x3E
+
+Reserved
+
+0x3F
+
+Product Code
+
+0x70 – 0x7F
+
+Note: These registers require firmware revision 4.08 or later.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+15 (56)
+
+They contain information about the sensors Product code.
+Each register is a character in ASCII format, and the end
+character is 0x00. Below is an example for Sunrise with
+product code “006-0-0008”.
+
+Register
+Address
+
+Hex data
+
+ASCII character
+
+0x70
+
+0x30
+
+0
+
+0x71
+
+0x30
+
+0
+
+0x72
+
+0x36
+
+6
+
+0x73
+
+0x2D
+
+-
+
+0x74
+
+0x30
+
+0
+
+0x75
+
+0x2D
+
+-
+
+0x76
+
+0x30
+
+0
+
+0x77
+
+0x30
+
+0
+
+0x78
+
+0x30
+
+0
+
+0x79
+
+0x38
+
+8
+
+0x7A
+
+0x00
+
+null
+
+After the first null character, the remaining in this address
+range is also null.
+Table 2. I2C read only registers
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+16 (56)
+
+2.1.3 I2C read/write registers
+
+Name
+
+Register
+number /
+Address
+
+Reserved
+
+0x80
+
+Description (read/write registers)
+
+These bits are set after successful calibrations. The bits
+need to be cleared/reset by host system; it is
+recommended to do this before starting a calibration.
+Bit
+
+Description
+
+0
+1
+Calibration
+Status
+
+0x81
+
+2
+
+Factory calibration restored
+
+3
+
+ABC calibration
+
+4
+
+Target calibration
+
+5
+
+Background calibration
+
+6
+
+Zero calibration
+
+7
+Calibration is initiated by the commands in the table
+below. See [2] for description of the different
+calibration modes.
+
+Calibration
+Command
+
+0x82 (MSB)
+
+The sensor will perform a calibration based on the first
+measurement immediately after the calibration
+command was received. Host system should trig a
+measurement after writing the calibration command in
+single measurement mode. After having performed the
+calibration, all following measurements will use the
+adjusted calibration parameters
+
+0x83 (LSB)
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+17 (56)
+
+It is recommended that Calibration status is cleared
+before initiating a calibration.
+
+Command
+
+Name and description
+
+0x7C02
+
+Restore factory calibration.
+Restores calibration parameters to factory
+calibration values.
+
+0x7C03
+
+Forced ABC calibration.
+Sensor will perform an ABC calibration after
+receiving this command if sensor has valid ABC
+data. The command can be used if one for
+some reason wants to do an ABC adjustment
+before one ABC period has passed (when a
+normal ABC calibration is done).
+This command only works if ABC is enabled,
+see ABC period (addr 0x9A & 0x9B) and
+MeterControl (addr 0xA5).
+
+0x7C05
+
+Target calibration.
+Calibration using Calibration target (addr 0x84,
+0x85) value as calibration target.
+
+0x7C06
+
+Background calibration
+Calibration using ABC target as calibration
+target.
+
+0x7C07
+
+Zero calibration.
+Calibration using 0 ppm gas as calibration
+target.
+
+Calibration
+Target
+
+0x84 (MSB)
+
+Calibration target used by target calibration
+
+0x85 (LSB)
+
+(0x82..0x83- 0x7C05 command).
+
+0x86 (MSB)
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+18 (56)
+
+Measured
+concentration
+Override
+
+0x87 (LSB)
+
+Default value = 32767 (no override). If a value lower than
+default is written to the register both filtered and unfiltered
+measured concentration will be set to this value after next
+measurement.
+
+0x88 (MSB)
+
+Time passed since last ABC calibration in hours.
+
+0x89 (LSB)
+
+If ABC is enabled when sensor is used in single
+measurement mode and powered down between
+measurements, the host system must read this register
+from the sensor after each measurement, increment its
+value every hour and write back to the sensor after each
+power on (enable) before a new measurement is
+trigged.
+
+ABC Time
+
+0x8A (MSB)
+ABC Par0
+0x8B (LSB)
+0x8C (MSB)
+ABC Par1
+0x8D (LSB)
+0x8E (MSB)
+ABC Par2
+0x8F (LSB)
+
+If ABC is enabled when sensor is used in single
+measurement mode and powered down between
+measurements, these registers must be read from the
+sensor after each measurement and written back to the
+sensor after each power on (enable) before a new
+measurement is trigged.
+
+0x90 (MSB)
+ABC Par3
+0x91 (LSB)
+Reserved
+
+0x92
+
+Start Single
+Measurement
+
+0x93
+
+Reserved
+
+0x94
+
+Writing 1 initiates a measurement if the sensor is configured
+for single measurement mode.
+
+There are two measurement modes to choose between.
+Measurement
+Mode
+(EE)
+
+Value = 0, continuous measurement mode (default)
+0x95
+Value = 1, single measurement mode.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+19 (56)
+
+Note: A system reset is required after changing measurement
+mode. New written data to the register can be read back after
+a sensor reset is completed.
+
+0x96 (MSB)
+
+Measurement
+Period (EE)
+0x97 (LSB)
+
+Measurement period in seconds (range from 2 to 65534).
+Odd numbers will be rounded up to nearest even number.
+
+Note: A system reset is required after changing configuration.
+New written data to the register can be read back after a
+sensor reset is completed. Default value is 16.
+
+Note: Measurement period is only used in continuous
+measurement mode
+
+0x98 (MSB)
+
+Number of samples in one measurement (range from 1 to
+1024). A higher number leads to a better accuracy but also a
+higher power consumption.
+Note: A system reset is required after changing
+configuration. New written data to the register can be read
+back after a sensor reset is completed. Default is 8
+samples.
+
+Number of
+samples
+(EE)
+0x99 (LSB)
+
+Note: One sample takes max 300ms, this means that
+(Number of samples * 0.3s) should be less than or equal to
+time between measurements.
+If time for executing all samples in a measurement is longer
+than measurement period, sensor will execute all samples
+and after that start a new measurement. This means that
+actual measurement period will be longer than measurement
+period specified in HR12.
+Note (not applicable for 006-0-0007): Odd numbers will be
+internally rounded down to nearest even number and values
+below 2 will be replaced with 2.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+20 (56)
+
+0x9A (MSB)
+ABC period
+(EE)
+
+0x9B (LSB)
+
+Period for ABC cycle in hours (range from 1 to 65534). Default
+is 180 hours.
+ABC enabled by writing 1 to 65534 to addr 0x9A, 0x9B and bit
+1 = 0 at addr 0xA4, 0xA5
+ABC disabled by writing 0 or 65535 to addr 0x9A, 0x9B or bit
+1 = 1 at addr 0xA4, 0xA5.
+
+Reserved
+
+0x9C
+
+Clear
+ErrorStatus
+
+0x9D
+
+Write any numbers to this register to clear the ErrorStatus
+
+ABC Target
+(EE)
+
+0x9E (MSB)
+
+Reserved
+
+0xA0
+
+Target value for background and ABC calibrations (ppm gas).
+0x9F (LSB)
+
+Static IIR filter
+parameter
+(EE)
+
+0xA1
+
+Reserved
+
+0xA2
+
+SCR
+
+0xA3
+
+Parameter for static IIR filter, range from 2 – 10. A higher
+value corresponds to a harder filtration. See [2] for details
+about IIR filtration.
+
+The SCR register can be used to reset the sensor
+Register value = 0xFF, sensor will reset/restart itself.
+Reserved
+
+0xA4
+Bit field used to enable/disable sensor functions
+
+Meter control
+(EE)
+
+Bit
+
+Description
+
+0
+
+0 - nRDY enabled (default)
+1 - nRDY disabled
+
+0xA5
+1
+
+0 - ABC enabled (default)
+1 - ABC disabled
+
+2
+
+0 – Static IIR filter enabled (default)
+1 - Static IIR filter disabled
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+21 (56)
+
+3
+
+0 – Dynamic IIR filter enabled (default)
+1 – Dynamic IIR filter disabled
+To enable dynamic IIR filter both static IIR filter (bit2)
+and dynamic IIR filter (bit3) must be enabled
+
+4
+
+0 – Pressure compensation enabled
+1 – Pressure compensation disabled (default)
+
+5
+
+0 – nRDY pin invert enabled, low during measurement
+1 – nRDY pin invert disabled (default), high during
+measurement
+
+6
+7
+EEPROM mapped register.
+Reserved
+
+MB/I2C
+address
+(EE)
+
+0xA6
+Sensor address, range 1 – 127 (0x01 – 0x7F). Default value is
+104 (0x68). A sensor reset is needed to activate the new
+address.
+0xA7
+
+EEPROM mapped register
+Note: Sensor does not check validity of the I2C address, do
+not set reserved or invalid I2C addresses.
+
+Concentration
+scale factor,
+nominator
+part (EE)
+
+0xA8 (MSB)
+0xA9 (LSB)
+0xAA (MSB)
+
+Concentration
+scale factor,
+denominator
+part (EE)
+
+0xAB (LSB)
+
+Registers 0xA8…0xAB are used to scale “Measured
+concentration Filtered & pressure compensated” register
+value to calculate “Scaled measured concentration” (registers
+0x18...0x19) register value:
+“Scaled measured concentration” = “Measured concentration
+Filtered & pressure compensated” *” Concentration scale
+factor, nominator part”/” Concentration scale factor,
+denominator part”
+The registers are unsigned 16 bit.
+If both registers are equal to 0xFFFF, the scaling is disabled
+and “Scaled measured concentration” registers value is just a
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+22 (56)
+
+copy of “Measured concentration Filtered & pressure
+compensated” registers.
+If scaling factor is invalid, the “Scale factor error” bit will be
+set in “ErrorStatus” register at startup.
+EEPROM mapped registers.
+A sensor reset is needed to activate the new setting and
+readback new values.
+Note: For firmware revision 4.10 and above
+Scaled
+Calibration
+Target
+
+0xAC (MSB)
+
+Scaled
+Measured
+concentration
+Override
+
+0xAE (MSB)
+
+Scaled ABC
+Target (EE)
+
+0xB0 (MSB)
+
+Target value for background and ABC calibrations.
+
+0xB1 (LSB)
+
+Note: For firmware revision 4.10 and above
+
+0xAD (LSB)
+
+0xAF (LSB)
+
+Scaled calibration target used by target calibration (0x7C05
+command).
+Note: For firmware revision 4.10 and above
+Default value = 32767 (no override). If a value lower than
+default is written to the register, both the gas filtered and
+unfiltered registers will be set to this value.
+Note: For firmware revision 4.10 and above
+
+Registers from address 0xC0 to 0xCD are mirrors of registers at addresses 0x80, 0x81, 0x92,
+0x93, and 0x88 to 0x91. The reason for this is to make it possible to only write and read
+respectively one block of read/write registers when sensor is used in single measurement
+mode and powered down between measurements. See example at 3.4 for details.
+Reserved
+
+0xC0
+These bits are set after successful calibrations. The bits need
+to be cleared/reset by host system; it is recommended to do
+this before starting a calibration.
+
+Calibration
+Status
+
+0xC1
+
+Bit
+
+Description
+
+0
+1
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+23 (56)
+
+2
+
+Factory calibration restored
+
+3
+
+ABC calibration
+
+4
+
+Target calibration
+
+5
+
+Background calibration
+
+6
+
+Zero calibration
+
+7
+Reserved
+
+0xC2
+
+Start Single
+Measurement
+
+0xC3
+
+Writing 1 to this register initiates a measurement if the
+sensor is configured for single measurement mode.
+
+0xC4 (MSB)
+
+ABC Time
+0xC5 (LSB)
+
+Time passed since last ABC calibration in hours.
+If ABC is enabled when sensor is used in single
+measurement mode and powered down between
+measurements, the host system must read this register
+from the sensor after each measurement, increment its
+value every hour and write back to the sensor after each
+power on (enable) before a new measurement is
+trigged.
+
+0xC6 (MSB)
+ABC Par0
+0xC7 (LSB)
+0xC8 (MSB)
+ABC Par1
+0xC9 (LSB)
+0xCA (MSB)
+ABC Par2
+0xCB (LSB)
+
+If ABC is enabled when sensor is used in single
+measurement mode and powered down between
+measurements, these registers must be read from the
+sensor after each measurement and written back to the
+sensor after each power on (enable) before a new
+measurement is trigged.
+
+0xCC (MSB)
+ABC Par3
+0xCD (LSB)
+0xCE (MSB)
+Filter Par0
+0xCF (LSB)
+Filter Par1
+
+0xD0 (MSB)
+
+If the sensor is used in single measurement mode with
+IIR filter enabled and powered down between
+measurements, these registers must be read from the
+sensor after each measurement and written back to the
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+24 (56)
+
+0xD1 (LSB)
+0xD2 (MSB)
+
+sensor after each power on (enable) before a new
+measurement is trigged.
+
+Filter Par2
+0xD3 (LSB)
+0xD4 (MSB)
+Filter Par3
+0xD5 (LSB)
+0xD6 (MSB)
+Filter Par4
+0xD7 (LSB)
+0xD8 (MSB)
+Filter Par5
+0xD9 (LSB)
+0xDA (MSB)
+Filter Par6
+0xDB (LSB)
+0xDC (MSB)
+Barometric air
+pressure value
+
+0xDD (LSB)
+
+For values outside pressure range, error flag “out of range”
+will be set and compensation will be done with min or max
+pressure value.
+If pressure compensation and ABC are both enabled when
+sensor is used in single measurement mode and powered
+down between measurements, this register must be read
+from the sensor after each measurement and written back to
+the sensor after each power on (enable) before a new
+measurement is trigged.
+
+0xDE
+ABC
+barometric
+pressure value
+
+Barometric air pressure value. Signed 16 bit, unit 0.1 hPa.
+Range from 3000 – 13000 (300 – 1300 hPa).
+
+0xDF
+
+Table 3 I2C read/write registers
+Registers with (EE) after their names use sensors EEPROM, this means that too frequent
+writes to these registers will lead to a corrupt EEPROM. Total number of EEPROM write
+cycles should be less than 10000.
+When writing multiple (EE) registers in one sequence then this write cycle will be counted as
+just ONE write cycle out of the 10000 that are allowed writes to the EEPROM.
+Write operations into (EE) registers require relative long to process (see Senseair Sunrise and
+Sunlight I2C settings).
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+25 (56)
+
+Note: For articles 006-0-0002 and 006-0-0007: When write operations are ongoing, the
+sensor will not respond to communication. This means that for example if Measurement
+Mode (EE), Measurement Period (EE), Number of samples (EE) and ABC period (EE) registers
+are written in one I2C write sequence, the sensor can be unresponsive for up to 100ms.
+Note: Do not use sensors capability to respond on communication as an indication of
+finished writing process.
+It is very important that the sensor is not powered down when write operations are ongoing,
+doing so may result in corrupt parameters.
+When writing several bytes to sensors EEPROM, it’s important to wait until all bytes are
+written.
+Registers marked as “Reserved” can be read and written, however it is strongly
+recommended to not use these registers.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+26 (56)
+
+3. Examples
+3.1. Read Error Status and gas concentration
+Reading Error Status and filtered measured gas concentration (Error Status, 4 reserved
+bytes, measured concentration).
+
+Stop
+
+R/W = 1
+
+0x02
+
+0x0C
+
+P
+
+NACK
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+S 0x68
+
+ACK
+
+ACK
+
+NACK
+
+0x00
+
+ACK
+
+S 0x68
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+Start
+
+R/W = 0
+
+3.1.1 Example using repeated start:
+
+In example Error Status = 0 (no error flags set) and measured concentration = 0x020C (524d).
+
+Stop
+0x01
+
+0xF2
+
+P
+
+NACK
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+S 0x68
+
+ACK
+
+R/W = 1
+
+Max 15ms
+
+Start
+
+Stop
+P
+
+ACK
+
+NACK
+
+0x00
+
+ACK
+
+S 0x68
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+3.1.2 Example not using repeated start:
+
+In example Error Status = 0 (no error flags set) and measured concentration = 0x01F2 (498d).
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+27 (56)
+
+3.2. Set measurement mode to single measurement mode
+
+Stop
+
+S 0x68
+
+ACK
+
+NACK
+
+0x95
+
+0x01
+
+P
+
+ACK
+
+P
+
+SDA S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+Write 1 to register Measurement Mode (0x95). Note that after measurement mode has been
+written to the sensor it has to be restarted before it will change to the new measurement
+mode.
+
+3.3. Start single measurement
+The single measurement command can be used if a host wants to control when Senseair
+Sunrise/ Sunlight measures, for example if one wants to use different measurement periods
+depending on time of day or weekday.
+If ABC is enabled, it is very important to ensure that measurements are performed when the
+sensor is exposed to fresh air.
+
+0x01
+
+P
+
+ACK
+
+NACK
+
+0xC3
+
+ACK
+
+S 0x68
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+Write 1 to register Start Single Measurement (0xC3 or 0x93).
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+28 (56)
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+29 (56)
+
+3.4. Sequence for single measurement mode, sensor enabled/disabled by EN pin
+To minimise power consumption, one can power down Senseair Sunrise/Sunlight between
+measurements, or alternatively drive its EN pin low (powers down active circuits). When the
+sensors circuits are powered down, data needed for ABC and IIR filter will be lost. Therefore,
+it is necessary to read a few registers from Senseair Sunrise/Sunlight before it is powered
+down and to write these registers back after it is powered on.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+30 (56)
+
+Following sequence can be used when powering down/disable the sensor between
+measurements in single measurement mode.
+
+Figure 10, Sequence for single measurement mode, sensor enabled/disabled by EN pin
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+31 (56)
+
+Figure 11, Timing diagram for single measurement mode
+
+1 Drive EN pin high (>1.2V)
+2 Wait for minimum 35ms for sensor start-up and stabilisation
+3 If state data exist go to point 3.1, otherwise go to point 3.2
+3.1 Sensor state data exist
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Stop
+
+0x5A
+
+P
+ACK
+
+0x00
+ACK
+
+0xEC
+
+ACK
+
+ACK
+
+0x08
+
+ACK
+
+0xFE
+ACK
+
+0x5A
+
+0x00
+ACK
+
+ACK
+
+0x0D
+
+ACK
+
+0x00
+ACK
+
+0x47
+
+0x02
+ACK
+
+ACK
+
+0xEC
+
+ACK
+
+0xB2
+ACK
+
+0x00
+
+0xFE
+ACK
+
+ACK
+
+ACK
+
+0x00
+
+0x47
+
+ACK
+
+0x04
+
+0xB2
+
+ACK
+
+0x00
+
+0x00
+ACK
+
+0x00
+
+ACK
+
+0x04
+ACK
+
+0x00
+
+0x01
+ACK
+
+ACK
+
+NACK
+
+0xC3
+
+ACK
+
+S 0x68
+
+ACK
+
+P
+
+SDA S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+If pressure compensation is not used write start measurement command and state data to
+register Start Single Measurement – Filter Par6 (0xC3 – 0xDB).
+
+Page
+32 (56)
+
+Stop
+0x57
+
+P
+
+ACK
+
+0x28
+
+ACK
+
+0x5A
+
+ACK
+
+0x00
+
+ACK
+
+0xEC
+
+ACK
+
+ACK
+
+0x08
+
+ACK
+
+0xFE
+
+ACK
+
+0x5A
+
+0x00
+
+ACK
+
+ACK
+
+0x0D
+
+ACK
+
+0x00
+
+ACK
+
+0x47
+
+0x02
+
+ACK
+
+ACK
+
+0xEC
+
+ACK
+
+0xB2
+
+ACK
+
+0x00
+
+0xFE
+
+ACK
+
+ACK
+
+ACK
+0x00
+
+0x47
+
+ACK
+
+0x04
+
+0xB2
+
+ACK
+
+0x00
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+0x04
+
+ACK
+
+0x00
+
+0x01
+
+ACK
+
+ACK
+
+NACK
+
+0xC3
+
+ACK
+
+S 0x68
+
+ACK
+
+P
+
+SDA S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+Start
+
+R/W = 0
+
+If pressure compensation is used, write measurement command, state data and pressure to
+registers Start Single Measurement – Barometric air pressure (0xC3 – 0xDD). In this
+example barometric air pressure 1032.7 hPa is written to the sensor.
+
+3.2 Sensor state data do not exist.
+If host device has no state data, it is very important that host do not write “0” or any
+arbitrary data to address 0xC6 - 0xDB (ABC Par0 to Filter Par6) the first time it starts a
+measurement.
+
+Stop
+0x01
+
+©2024 Senseair AB. All rights reserved.
+
+P
+
+ACK
+
+NACK
+
+0xC3
+
+ACK
+
+S 0x68
+
+ACK
+
+Start
+
+P
+
+SDA S 0x68
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+There are 2 options for this condition:
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+33 (56)
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+34 (56)
+
+Stop
+
+R/W = 1
+
+0x02
+
+0x0D
+
+0x00
+
+0x08
+
+P
+
+NACK
+
+0xEF
+
+ACK
+
+0x01
+
+ACK
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+0x00
+
+ACK
+
+ACK
+
+0x00
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Stop
+
+ACK
+ACK
+
+0x5A
+
+P
+
+NACK
+
+ACK
+0x00
+
+ACK
+
+0xEC
+
+ACK
+
+0xFE
+
+ACK
+
+0x5A
+
+ACK
+
+ACK
+
+ACK
+0x00
+
+ACK
+
+0x47
+
+ACK
+
+0xB2
+
+0xEC
+
+ACK
+
+ACK
+
+0xFE
+
+ACK
+
+0x00
+
+ACK
+
+0x00
+
+0x47
+
+ACK
+
+ACK
+
+0xB2
+
+ACK
+
+0x04
+
+ACK
+
+0x00
+
+0x00
+
+ACK
+
+ACK
+
+0x00
+
+ACK
+
+0x04
+
+0x00
+
+R/W = 1
+
+ACK
+Start
+
+0x00
+
+ACK
+
+ACK
+
+S 0x68
+
+ACK
+
+0xC4
+
+ACK
+
+NACK
+
+R/W = 0
+
+Start
+S 0x68
+
+S 0x68
+
+ACK
+
+0x00
+
+NACK
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+S 0x68
+
+Start
+
+S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+Page
+35 (56)
+
+3.5. Enable/Disable ABC
+3.5.1 Enable ABC:
+
+Stop
+
+R/W = 1
+
+S 0x68
+
+0xFF
+
+P
+
+NACK
+
+ACK
+
+NACK
+
+0xA5
+
+ACK
+
+S 0x68
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+1.1 Start by reading current register value from address 0xA5.
+
+1.2 Clear bit1 in register and write back
+Meter control = 0xFF => new Meter control value = 0xFF & 0xFD = 0xFD
+
+0xFD
+
+P
+
+ACK
+
+NACK
+
+0xA5
+
+ACK
+
+S 0x68
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+1.3 Write back new Meter control value.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+36 (56)
+
+Stop
+
+R/W = 1
+
+0xB4
+
+P
+
+NACK
+
+0x00
+
+ACK
+
+S 0x68
+
+ACK
+
+0x9A
+
+ACK
+
+NACK
+
+Start
+
+S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+0xC8
+
+©2024 Senseair AB. All rights reserved.
+
+P
+
+ACK
+
+0x00
+
+ACK
+
+NACK
+
+0x9A
+
+ACK
+
+S 0x68
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+ABC period = 0x00B4 = 180 hours
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+37 (56)
+
+3.5.2 Disable ABC:
+
+Stop
+
+R/W = 1
+
+S 0x68
+
+0xFD
+
+P
+
+NACK
+
+ACK
+
+NACK
+
+0xA5
+
+ACK
+
+S 0x68
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+1. Start by reading register Meter control.
+
+2. Set bit1 in register and write back.
+3. Meter control = 0xFD => new Meter control = 0xFD | 0x02 = 0xFF
+
+0xFF
+
+P
+
+ACK
+
+NACK
+
+0xA5
+
+ACK
+
+S 0x68
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+4. Write back new Meter control value.
+
+A possible alternative is to set register ABC period to zero, but then information about what
+ABC period to use must be saved to be able to enable ABC in future.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+38 (56)
+
+3.6. Enable/Disable dynamic IIR filter
+Enable and disable dynamic IIR filtration by writing to register Meter control (0xA5).
+
+3.6.1 Enable dynamic IIR filter.
+
+Stop
+
+R/W = 1
+
+S 0x68
+
+0xFF
+
+P
+
+NACK
+
+ACK
+
+NACK
+
+0xA5
+
+ACK
+
+S 0x68
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+1. Start by reading Meter control.
+
+2. Clear bit2 and bit3 in register and write back
+
+0xF3
+
+P
+
+ACK
+
+NACK
+
+0xA5
+
+ACK
+
+S 0x68
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+Meter control = 0xFF => new Meter control value = 0xFF & 0xF3 = 0xF3
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+39 (56)
+
+3.6.2 Disable static and dynamic IIR filter.
+
+Stop
+
+R/W = 1
+
+S 0x68
+
+0xF0
+
+P
+
+NACK
+
+ACK
+
+NACK
+
+0xA5
+
+ACK
+
+S 0x68
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+1. Start by reading register Meter control (0xA5).
+
+2. Set bit 2 and bit 3 in register Meter control (0xA5).
+
+0xFC
+
+P
+
+ACK
+
+NACK
+
+0xA5
+
+ACK
+
+S 0x68
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+Meter control = 0xF0 => new Meter control = 0xF0 | 0xFC = 0xFC
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+40 (56)
+
+3.7. Calibration
+3.7.1 Background Calibration
+Example how to background calibrate against gas of concentration specified in the ABC
+Target register (for CO2: against fresh air or 400ppm CO2) by trigging the background
+calibration and read calibration status after calibration.
+3.7.1.1.
+
+Continuous measurement mode
+
+0x81
+
+ACK
+
+NACK
+
+Stop
+
+S 0x68
+
+0x00
+
+P
+
+ACK
+
+P
+
+SDA S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+1. Start by clearing register Calibration Status (0x81)
+
+0x06
+
+©2024 Senseair AB. All rights reserved.
+
+P
+
+ACK
+
+0x7C
+
+ACK
+
+NACK
+
+0x82
+
+ACK
+
+S 0x68
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+2. Write background calibration command (0x7C06) to register Calibration Command (0x82)
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+41 (56)
+
+Stop
+
+R/W = 1
+0x20
+
+P
+
+NACK
+
+S 0x68
+
+ACK
+
+NACK
+
+0x81
+
+ACK
+
+S 0x68
+
+Start
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+Start
+
+R/W = 0
+
+3. Read register Calibration Status (0x81)
+
+Calibration status register = 0x20 means background calibration succeeded.
+To achieve best possible result from a calibration it is important that the sensor is in a stable
+environment.
+
+3.7.1.2.
+
+Single measurement mode
+
+Flowchart presents the calibration sequence in single measurement mode.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+42 (56)
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+43 (56)
+
+Target Calibration
+Example how to calibrate against target 500 ppm.
+
+0x81
+
+ACK
+
+NACK
+
+Stop
+
+S 0x68
+
+0x00
+
+P
+
+ACK
+
+P
+
+SDA S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+1. Start by clearing register Calibration Status (0x81)
+
+0xF4
+
+©2024 Senseair AB. All rights reserved.
+
+P
+
+ACK
+
+0x01
+
+ACK
+
+NACK
+
+0x84
+
+ACK
+
+S 0x68
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+2. Write calibration target 500 to register Calibration Target (0x84)
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+44 (56)
+
+Stop
+
+ACK
+
+NACK
+
+0x82
+
+0x7C
+
+0x05
+
+P
+
+ACK
+
+S 0x68
+
+ACK
+
+P
+
+SDA S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+3. Write calibration command (0x7C05) to register Calibration Command (0x82)
+
+Stop
+
+R/W = 1
+0x10
+
+P
+
+NACK
+
+S 0x68
+
+ACK
+
+NACK
+
+0x81
+
+ACK
+
+S 0x68
+
+Start
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+4. Read status from register Calibration Status (0x81).
+
+Calibration status register = 0x10 means target calibration succeeded.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+45 (56)
+
+3.8. I2C address
+Set sensors I2C address to 10.
+
+0xA7
+
+ACK
+
+NACK
+
+Stop
+
+S 0x68
+
+0x0A
+
+P
+
+ACK
+
+P
+
+SDA S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+1. Write 10 to register MB/I2C (0xA7)
+
+0xFF
+
+P
+
+ACK
+
+NACK
+
+0xA3
+
+ACK
+
+S 0x68
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+2. Write 0xFF to register SCR (0xA3) to reset sensor (still use address 0x68)
+
+An alternative to write reset command is to power off/on the sensor.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+46 (56)
+
+Stop
+
+R/W = 1
+
+©2024 Senseair AB. All rights reserved.
+
+0x0A
+
+P
+
+NACK
+
+S 0x0A
+
+ACK
+
+NACK
+
+0xA7
+
+ACK
+
+S 0x0A
+
+Start
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x0A
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+3. Read register MB/I2C (0xA7) using address 10.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+47 (56)
+
+3.9. Enable/Disable pressure compensation
+Enable and disable pressure compensation by writing to register Meter control (0xA5).
+
+3.9.1 Enable pressure compensation.
+
+Stop
+
+R/W = 1
+
+S 0x68
+
+0xF0
+
+P
+
+NACK
+
+ACK
+
+NACK
+
+0xA5
+
+ACK
+
+S 0x68
+
+Start
+
+P
+
+S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+Start
+
+R/W = 0
+
+1. Start by reading Meter control.
+
+2. Clear bit4 in the register and write back
+
+0xE0
+
+P
+
+ACK
+
+NACK
+
+0xA5
+
+ACK
+
+S 0x68
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+Meter control = 0xF0 => new Meter control value = 0xF0 & 0xEF = 0xE0
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+48 (56)
+
+3.9.2 Disable pressure compensation.
+
+Stop
+
+R/W = 1
+
+S 0x68
+
+0xE0
+
+P
+
+NACK
+
+ACK
+
+NACK
+
+0xA5
+
+ACK
+
+S 0x68
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Start
+
+R/W = 0
+
+Stop
+
+R/W = 0
+
+Start
+
+3. Start by reading register Meter control (0xA5).
+
+4. Set bit 4 in register Meter control (0xA5).
+
+0xF0
+
+P
+
+ACK
+
+NACK
+
+0xA5
+
+ACK
+
+S 0x68
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+ACK
+
+Stop
+
+R/W = 0
+
+Start
+
+Meter control = 0xE0 => new Meter control = 0xE0 | 0xF0 = 0xF0
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+49 (56)
+
+3.10.
+
+Write pressure to sensor
+
+Write pressure 997 hPa to sensor. Sensor works with pressure unit 0.1 hPa so value to write
+to the sensor has to be calculated.
+
+Value to write = 997 * 10 = 9970 = 0x26F2.
+
+Stop
+
+R/W = 0
+
+0xF2
+
+P
+
+ACK
+
+0x26
+
+ACK
+
+0xDC
+
+ACK
+
+S 0x68
+
+ACK
+
+P
+
+Start
+
+R/W = 0
+Stop
+
+SDA S 0x68
+
+NACK
+
+Start
+
+Write 9970 to barometric pressure register (0xDC, 0xDD)
+
+If pressure compensation is enabled and a value has been written to address 0xDC 2byte, the
+sensor will pressure compensate gas. If value written to sensor is not in the range 3000 –
+13000, the sensor will use 3000 or 13000 for the pressure compensation.
+Pressure value written to the sensor will be used in the next gas calculation. In continuous
+measurement mode this means that it can take up to one measurement period before
+pressure compensated measured concentration is based on the new pressure value.
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+50 (56)
+
+3.11.
+
+Write scaling factor
+
+Note: Only applicable for firmware revision equal or above 4.10.
+To change scaling factor, one shall write new scaling pair of values into 0xA8…0xAB
+registers. For example, if one wants to change representation of value in registers
+0x1A...0x1B for Sunlight R32 sensor to %LFL for R454B gas (see Scaling factors from
+ppm to %LFL for common gases):
+Values to write:
+0xA8...0xA9 = 4171 (0x104B)
+
+Stop
+Stop
+0x10
+
+0x00
+
+P
+
+ACK
+
+ACK
+
+0xAA
+
+ACK
+
+Start
+S 0x68
+
+P
+
+ACK
+
+0x4B
+
+ACK
+
+ACK
+
+0x10
+
+R/W = 0
+
+NACK
+NACK
+
+0xA8
+
+ACK
+
+P
+
+R/W = 0
+
+R/W = 0
+Stop
+
+SDA S 0x68
+
+S 0x68
+
+ACK
+
+R/W = 0
+Stop
+P
+
+Start
+
+Start
+SDA S 0x68
+
+Start
+
+0xAA...0xAB = 4096 (0x1000)
+
+Validate the writing after sensor reset (or by software command or by hardware
+reset):
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+51 (56)
+
+Stop
+
+R/W = 1
+
+NACK
+
+P
+
+Stop
+Document
+TDE5531
+
+P
+
+NACK
+
+0x00
+
+ACK
+
+0x10
+
+ACK
+
+S 0x68
+
+©2024 Senseair AB. All rights reserved.
+
+0x4B
+
+ACK
+
+ACK
+
+0x10
+
+R/W = 1
+
+ACK
+Start
+0xAA
+
+ACK
+
+NACK
+
+R/W = 0
+
+NACK
+R/W = 0
+
+Start
+
+S 0x68
+
+ACK
+
+S 0x68
+
+Start
+
+R/W = 0
+
+Start
+Start
+
+P
+
+SDA S 0x68
+
+0xA8
+
+ACK
+
+Stop
+
+S 0x68
+
+Stop
+
+R/W = 0
+
+Start
+
+P
+
+SDA S 0x68
+
+Rev
+17
+
+Page
+52 (56)
+
+4. Scaling factors from ppm to %LFL for common gases
+The Sunrise/Sunlight sensors family has multiple variants of the articles for different gases and
+ranges.
+To calculate the %LFL or ppm from the sensor reading one can use following formulas:
+ppm:
+
+𝑝𝑝𝑚=𝑆𝑒𝑛𝑠𝑜𝑟𝑟𝑒𝑎𝑑𝑖𝑛𝑔∗𝐾𝑝𝑝𝑚
+
+%LFL:
+%𝐿𝐹𝐿=𝑆𝑒𝑛𝑠𝑜𝑟𝑟𝑒𝑎𝑑𝑖𝑛𝑔/𝐾%𝐿𝐹𝐿*100%
+The sensor resolution in ppm (𝐾𝑝𝑝𝑚) and LFL scaling factor (𝐾%𝐿𝐹𝐿) are product depended values,
+please consult with product specification regarding exact values - the table below shows these values
+for most common sensors:
+
+Gas
+
+Kppm,
+sensor
+resolution
+in ppm
+
+K%LFL Recommended
+concentration
+scale factor,
+nominator part
+(registers
+0xA8...0xA9)
+
+Recommended
+concentration
+scale factor,
+denominator part
+(registers
+0xAA…0xAB)
+
+%LFL LSB
+in registers
+0x18…0x19
+
+R32
+
+10
+
+144.4
+
+22756
+
+32768
+
+0.01%
+
+R454A
+
+18.47
+
+45.8
+
+8943
+
+4096
+
+0.01%
+
+R454B
+
+12.06
+
+98.2
+
+4171
+
+4096
+
+0.01%
+
+R454C 26.65
+
+29.6
+
+6919
+
+2048
+
+0.01%
+
+R290
+
+210
+
+100
+
+210
+
+0.01%
+
+1
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+53 (56)
+
+5. Revision history
+Date
+
+Revisio
+n
+
+Page (s)
+
+Description
+
+2019-05-15
+
+1-7
+
+All
+
+Sunrise FW rev. <=2.00, article number 006-0-0002
+
+2021-03-23
+
+17
+
+9, 11, 12
+
+Sunrise FW rev. >=3.00, article number 006-0-0007
+
+17, 18,
+35
+
+Page 9
+
+0x2F, Firmware type added
+
+Page 11
+
+0x98 & 0x99, sample time changed from max
+200ms to 300ms & instead of 0.2 it became 0.3
+
+Page 12
+
+0xA5, nRDY invert added
+
+Page 17
+
+Figure10 - point 4 updated from 2s to 2.4s
+(Max measurement time with default settings).
+
+Page 18
+
+Figure 11,
+T_ (one sample + gas calculation)
+typical 180ms
+Steady state current during
+sampling 99mA
+MCU active current 10mA
+
+2021-03-31
+
+2021-11-19
+
+9
+
+10
+
+10, 14,
+27
+
+1, 8, 9,10
+11, 12,
+15, 17,
+20, 26,
+34
+
+Page 35
+
+Revision history added
+
+Page 10
+
+0x82 & 0x83, Comments regarding calibration
+process in single measurement mode
+
+Page 14
+
+0xDE & 0xDF, ABC pressure value
+
+Page 27
+
+Calibration sequence flowchart in single
+measurement mode
+
+Page 1,
+5, 6, 16,
+17
+
+Added “and Sunlight” alt. “/Sunlight”
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+54 (56)
+
+Page 8,
+9, 11,
+15, 20,
+34
+
+Changed ”CO2 value” to ”measured
+concentration” (except in figure 10 P 17 and
+11 Page 18 = examples)
+
+Page 8,
+9, 10,
+12, 15,
+26
+
+Changed ”CO2” to ”gas”
+
+Page 12
+
+Deleted ” Default value is 400 (400 ppm
+gas).”
+
+Page 26
+
+Added “for CO2: against fresh air or 400ppm
+CO2)”
+Changed sidefoot, new logo etc
+
+2021-12-06
+
+11
+
+6
+
+Update timing for EEPROM operations
+
+8
+
+Description for “Low internal regulated voltage” bit
+changed
+
+8
+9
+9
+13
+15
+16
+20
+
+Description for “Abnormal signal level” bit added
+Description for “Self-diagnostic” bit changed
+Description for “Out of range” bit changed
+Add note regarding rounding for “Number of samples”
+register
+Update description for “ABC Time” register
+Update description regarding wrirting time for EE
+registrers
+Remove “Current” graph from Figure 11
+
+2022-02-11
+
+12
+
+21
+
+Description for “Sensor state data do not exist” changed
+
+2022-03-22
+
+13
+
+All
+
+Modified terminology for inclusive language
+
+2022-05-16
+
+13
+
+11
+
+Updated description of register “CO2 concentration
+unfiltered”
+
+2022-10-14
+
+14
+
+Changed logo
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+55 (56)
+
+2023-09-08
+
+15
+
+13
+
+Added read only registers for Product Code, requires FW
+4.08 or later.
+Update Figure references. Figure 2 was not a proper
+caption, resulting in offset by one for the rest.
+
+All
+2024-04-24
+
+16
+
+15,14
+11
+
+Add registers for scaled concentrations and calibration
+targets
+New error “Scale factor error” flag
+
+2024-08-21
+
+17
+
+47
+
+Example to set scaling factors
+
+49
+
+Common scaling factors table
+
+www.senseair.com
+
+©2024 Senseair AB. All rights reserved.
+
+Document
+TDE5531
+
+Rev
+17
+
+Page
+56 (56)
+
+
