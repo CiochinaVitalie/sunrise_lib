@@ -513,6 +513,25 @@ where
         self.write_register(Registers::StartMesurement, &[0x01], RAM_DELAY)
     }
 
+    /// Performs a soft reset by writing `0xFF` to the SCR register.
+    pub fn reset(&mut self) -> Result<(), E> {
+        self.write_register(Registers::Scr, &[0xFF], RAM_DELAY)
+    }
+
+    /// Reads the scaled measured concentration from the sensor.
+    pub fn scaled_measurement_get(&mut self) -> Result<i16, E> {
+        let mut buf = [0u8; 2];
+        self.read_register(Registers::ScaledMeasured, &mut buf)?;
+        Ok(i16::from_be_bytes([buf[0], buf[1]]))
+    }
+
+    /// Reads the elapsed time counter (ETC) from the sensor.
+    pub fn elapsed_time_get(&mut self) -> Result<u32, E> {
+        let mut buf = [0u8; 4];
+        self.read_register(Registers::Etc, &mut buf)?;
+        Ok(u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]))
+    }
+
     /// Retrieves the sensor's configuration values from the sensor's EEPROM registers.
     pub fn get_config(&mut self) -> Result<Config, E> {
         let mut buf = [0u8; 2];
@@ -736,6 +755,18 @@ where
             .map_err(ErrorStatus::I2c)?;
 
         self.mesurement.measured_unfiltered = i16::from_be_bytes([buf[0], buf[1]]);
+
+        // Read scaled measured concentration if available
+        self.read_register(Registers::ScaledMeasured, &mut buf)
+            .map_err(ErrorStatus::I2c)?;
+        self.mesurement.scaled_measured = i16::from_be_bytes([buf[0], buf[1]]);
+
+        // Read elapsed time counter
+        let mut etc_buf = [0u8; 4];
+        self.read_register(Registers::Etc, &mut etc_buf)
+            .map_err(ErrorStatus::I2c)?;
+        self.mesurement.etc =
+            u32::from_be_bytes([etc_buf[0], etc_buf[1], etc_buf[2], etc_buf[3]]);
 
         self.sensor_state_data_get().map_err(ErrorStatus::I2c)?;
 

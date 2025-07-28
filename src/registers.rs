@@ -9,6 +9,10 @@ pub enum Registers {
     MeasUnfPressCompens = 0x10,
     MeasFilPressCompens = 0x12,
     MeasuredUnfiltered = 0x14,
+    /// Scaled measured concentration (firmware >= 4.10)
+    ScaledMeasured = 0x1A,
+    /// Elapsed time counter in hours (firmware >= 4.10)
+    Etc = 0x2A,
     FirmwareType = 0x2F,
     FirmwareVer = 0x38,
     SensorId = 0x3A,
@@ -16,16 +20,24 @@ pub enum Registers {
     CalibrationStatus = 0x81,
     CalibrationCommand = 0x82,
     CalibrationTarget = 0x84,
+    /// Override value for measured concentration
+    MeasurementOverride = 0x86,
     MeasurementModeEe = 0x95,
     MeasurementPeriodEe = 0x96,
     NumberOfSamplesEe = 0x98,
     AbcPeriodEe = 0x9A,
     AbcTargetEe = 0x9E,
     StaticIIRFilterEe = 0xA1,
+    /// Sensor reset register
+    Scr = 0xA3,
     MeterControlEe = 0xA5,
     I2cAddressEe = 0xA7,
     NominatorEe = 0xA8,
     DenominatorEe = 0xAA,
+    /// Scaled calibration target used during calibration
+    ScaledCalibrationTarget = 0xAC,
+    /// Override value for scaled measured concentration
+    ScaledMeasurementOverride = 0xAE,
     ScaleAbcTarget = 0xB0,
     StartMesurement = 0xC3,
     PressureValue = 0xDC,

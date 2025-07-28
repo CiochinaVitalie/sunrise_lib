@@ -3,6 +3,9 @@ name = "sunrise_lib"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+doctest = false
+
 [dependencies]
 embedded-hal = { version = "0.2.7", features = ["unproven"] }
 heapless = "0.8.0"
