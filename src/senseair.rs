@@ -699,6 +699,7 @@ where
         pressure: Option<u16>,
     ) -> Result<&Measurement, ErrorStatus<E>> {
         let mut buf = [0u8; 2];
+        let mut tim_cnt: u8 = 0;
 
         self.clear_error_status().map_err(ErrorStatus::I2c)?;
         self.sensor_state_data_set().map_err(ErrorStatus::I2c)?;
@@ -712,17 +713,22 @@ where
             if let Ok(true) = self.n_rdy_pin.is_low() {
                 break;
             }
+            self.delay_ms(10);
+            tim_cnt += 1;
+            if tim_cnt >= 240 {
+                
+                 return Err(ErrorStatus::NoMeasurementCompleted);
+            }
         }
-        // self.delay_ms(2400);
+
+        self.read_register(Registers::ErrorStatus, &mut buf[..2])
+            .map_err(ErrorStatus::I2c)?;
 
         let sensor_err = u16::from_be_bytes([buf[0], buf[1]]);
 
         if let Some(err) = self.check_sensor_error(sensor_err) {
             return Err(err);
         }
-
-        self.read_register(Registers::ErrorStatus, &mut buf[..2])
-            .map_err(ErrorStatus::I2c)?;
 
         self.read_register(Registers::MeasuredFilteredPc, &mut buf)
             .map_err(ErrorStatus::I2c)?;
@@ -765,8 +771,7 @@ where
         let mut etc_buf = [0u8; 4];
         self.read_register(Registers::Etc, &mut etc_buf)
             .map_err(ErrorStatus::I2c)?;
-        self.mesurement.etc =
-            u32::from_be_bytes([etc_buf[0], etc_buf[1], etc_buf[2], etc_buf[3]]);
+        self.mesurement.etc = u32::from_be_bytes([etc_buf[0], etc_buf[1], etc_buf[2], etc_buf[3]]);
 
         self.sensor_state_data_get().map_err(ErrorStatus::I2c)?;
 
